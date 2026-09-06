@@ -70,7 +70,7 @@ data class Booking(
     val product: Product,
     val quantity: Int,
     val pickupCode: String,
-    val status: String = "Reserved for pickup"
+    val status: String = "Reserved"
 )
 
 private val sampleProducts = listOf(
@@ -92,6 +92,7 @@ enum class Screen {
     Bookings,
     BookingSuccess,
     Shop,
+    SellerReservations,
     AddProduct,
     EditProduct
 }
@@ -141,13 +142,28 @@ private fun TshongLaApp() {
         if (index >= 0) products[index] = updated
     }
 
+    fun updateBookingStatus(booking: Booking, newStatus: String) {
+        val index = bookings.indexOfFirst { it.pickupCode == booking.pickupCode }
+        if (index < 0 || booking.status == newStatus) return
+
+        if (newStatus == "Cancelled" && booking.status != "Cancelled") {
+            val currentProduct = products.firstOrNull { it.id == booking.product.id }
+            if (currentProduct != null) {
+                replaceProduct(currentProduct.copy(stock = currentProduct.stock + booking.quantity))
+            }
+        }
+        bookings[index] = booking.copy(status = newStatus)
+    }
+
     Scaffold(
         containerColor = Cream,
         bottomBar = {
             if (screen in listOf(Screen.Home, Screen.Explore, Screen.Bookings)) {
                 CustomerBottomBar(screen, bookings.size) { screen = it }
             }
-            if (screen == Screen.Shop) SellerBottomBar()
+            if (screen in listOf(Screen.Shop, Screen.SellerReservations)) {
+                SellerBottomBar(screen) { screen = it }
+            }
         }
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
@@ -198,9 +214,16 @@ private fun TshongLaApp() {
                 )
                 Screen.Shop -> ShopScreen(
                     products = products,
+                    bookings = bookings,
+                    openReservations = { screen = Screen.SellerReservations },
                     addProduct = { screen = Screen.AddProduct },
                     editProduct = { product -> selected = product; screen = Screen.EditProduct },
                     deleteProduct = { product -> products.remove(product) }
+                )
+                Screen.SellerReservations -> SellerReservationsScreen(
+                    bookings = bookings,
+                    back = { screen = Screen.Shop },
+                    updateStatus = ::updateBookingStatus
                 )
                 Screen.AddProduct -> AddProductScreen(
                     nextId = (products.maxOfOrNull { it.id } ?: 0) + 1,
@@ -304,10 +327,10 @@ private fun CustomerBottomBar(current: Screen, bookingCount: Int, navigate: (Scr
 }
 
 @Composable
-private fun SellerBottomBar() {
+private fun SellerBottomBar(current: Screen, navigate: (Screen) -> Unit) {
     NavigationBar(containerColor = Color.White, tonalElevation = 8.dp) {
-        NavigationBarItem(selected = true, onClick = {}, icon = { Icon(Icons.Outlined.Storefront, "Shop") }, label = { Text("My Shop") })
-        NavigationBarItem(selected = false, onClick = {}, icon = { Icon(Icons.Outlined.ReceiptLong, "Orders") }, label = { Text("Reservations") })
+        NavigationBarItem(selected = current == Screen.Shop, onClick = { navigate(Screen.Shop) }, icon = { Icon(Icons.Outlined.Storefront, "Shop") }, label = { Text("My Shop") })
+        NavigationBarItem(selected = current == Screen.SellerReservations, onClick = { navigate(Screen.SellerReservations) }, icon = { Icon(Icons.Outlined.ReceiptLong, "Reservations") }, label = { Text("Reservations") })
         NavigationBarItem(selected = false, onClick = {}, icon = { Icon(Icons.Outlined.Person, "Profile") }, label = { Text("Profile") })
     }
 }
@@ -520,7 +543,7 @@ private fun BookingsScreen(bookings: List<Booking>, explore: () -> Unit) {
                 Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(20.dp), elevation = CardDefaults.cardElevation(2.dp)) {
                     Column(Modifier.padding(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) { ProductArtwork(booking.product, Modifier.size(76.dp), 30); Column(Modifier.padding(start = 12.dp).weight(1f)) { Text(booking.product.name, fontWeight = FontWeight.Bold); Text("Qty ${booking.quantity} • Nu. ${booking.product.discountedPrice * booking.quantity}", color = Wine, fontWeight = FontWeight.SemiBold); Text("📍 ${booking.product.dzongkhag}", color = Color.Gray, fontSize = 12.sp) } }
-                        HorizontalDivider(Modifier.padding(vertical = 12.dp)); Row(verticalAlignment = Alignment.CenterVertically) { AssistChip(onClick = {}, label = { Text(booking.status) }, leadingIcon = { Icon(Icons.Default.CheckCircle, null, Modifier.size(16.dp)) }); Spacer(Modifier.weight(1f)); Column(horizontalAlignment = Alignment.End) { Text("Pickup code", color = Color.Gray, fontSize = 10.sp); Text(booking.pickupCode, color = Wine, fontWeight = FontWeight.ExtraBold) } }
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp)); Row(verticalAlignment = Alignment.CenterVertically) { BookingStatusChip(booking.status); Spacer(Modifier.weight(1f)); Column(horizontalAlignment = Alignment.End) { Text("Pickup code", color = Color.Gray, fontSize = 10.sp); Text(booking.pickupCode, color = Wine, fontWeight = FontWeight.ExtraBold) } }
                     }
                 }
             }
@@ -529,8 +552,28 @@ private fun BookingsScreen(bookings: List<Booking>, explore: () -> Unit) {
 }
 
 @Composable
-private fun ShopScreen(products: List<Product>, addProduct: () -> Unit, editProduct: (Product) -> Unit, deleteProduct: (Product) -> Unit) {
+private fun BookingStatusChip(status: String) {
+    val icon = when (status) {
+        "Ready for pickup" -> Icons.Outlined.Inventory2
+        "Collected" -> Icons.Outlined.CheckCircle
+        "Cancelled" -> Icons.Outlined.Cancel
+        else -> Icons.Outlined.Schedule
+    }
+    AssistChip(onClick = {}, label = { Text(status) }, leadingIcon = { Icon(icon, null, Modifier.size(16.dp)) })
+}
+
+@Composable
+private fun ShopScreen(
+    products: List<Product>,
+    bookings: List<Booking>,
+    openReservations: () -> Unit,
+    addProduct: () -> Unit,
+    editProduct: (Product) -> Unit,
+    deleteProduct: (Product) -> Unit
+) {
     var productToDelete by remember { mutableStateOf<Product?>(null) }
+    val activeReservations = bookings.count { it.status == "Reserved" || it.status == "Ready for pickup" }
+
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -539,7 +582,16 @@ private fun ShopScreen(products: List<Product>, addProduct: () -> Unit, editProd
             }
         }
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = SoftRose), shape = RoundedCornerShape(20.dp)) { Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Outlined.ConfirmationNumber, null, tint = Wine, modifier = Modifier.size(32.dp)); Column(Modifier.padding(start = 12.dp).weight(1f)) { Text("Pickup reservations", fontWeight = FontWeight.Bold); Text("Manage customer buying intentions and prepare reserved items.", color = Color.Gray, fontSize = 12.sp) }; TextButton(onClick = {}) { Text("View") } } }
+            Card(onClick = openReservations, colors = CardDefaults.cardColors(containerColor = SoftRose), shape = RoundedCornerShape(20.dp)) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    BadgedBox(badge = { if (activeReservations > 0) Badge { Text(activeReservations.toString()) } }) { Icon(Icons.Outlined.ConfirmationNumber, null, tint = Wine, modifier = Modifier.size(32.dp)) }
+                    Column(Modifier.padding(start = 12.dp).weight(1f)) {
+                        Text("Pickup reservations", fontWeight = FontWeight.Bold)
+                        Text(if (activeReservations > 0) "$activeReservations reservation(s) need your attention." else "No active pickup reservations right now.", color = Color.Gray, fontSize = 12.sp)
+                    }
+                    TextButton(onClick = openReservations) { Text("View") }
+                }
+            }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -555,6 +607,94 @@ private fun ShopScreen(products: List<Product>, addProduct: () -> Unit, editProd
     }
     productToDelete?.let { product ->
         AlertDialog(onDismissRequest = { productToDelete = null }, icon = { Icon(Icons.Outlined.Delete, null) }, title = { Text("Delete product?") }, text = { Text("${product.name} will be removed from your shop and customers will no longer be able to find it.") }, confirmButton = { TextButton(onClick = { deleteProduct(product); productToDelete = null }) { Text("Delete", color = MaterialTheme.colorScheme.error) } }, dismissButton = { TextButton(onClick = { productToDelete = null }) { Text("Cancel") } })
+    }
+}
+
+@Composable
+private fun SellerReservationsScreen(
+    bookings: List<Booking>,
+    back: () -> Unit,
+    updateStatus: (Booking, String) -> Unit
+) {
+    var selectedFilter by remember { mutableStateOf("Active") }
+    val visible = when (selectedFilter) {
+        "Active" -> bookings.filter { it.status == "Reserved" || it.status == "Ready for pickup" }
+        "Completed" -> bookings.filter { it.status == "Collected" }
+        "Cancelled" -> bookings.filter { it.status == "Cancelled" }
+        else -> bookings
+    }
+
+    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = back) { Icon(Icons.Default.ArrowBack, "Back") }
+                Column {
+                    Text("Reservations", style = MaterialTheme.typography.headlineLarge)
+                    Text("Manage customer pickup bookings.", color = Color.Gray)
+                }
+            }
+        }
+        item {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(listOf("Active", "Completed", "Cancelled", "All")) { filter ->
+                    FilterChip(selected = selectedFilter == filter, onClick = { selectedFilter = filter }, label = { Text(filter) })
+                }
+            }
+        }
+        if (visible.isEmpty()) {
+            item {
+                Column(Modifier.fillParentMaxHeight(.55f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Icon(Icons.Outlined.ReceiptLong, null, tint = Wine.copy(alpha = .55f), modifier = Modifier.size(64.dp))
+                    Spacer(Modifier.height(12.dp)); Text("No $selectedFilter reservations", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("New customer pickup bookings will appear here.", color = Color.Gray, textAlign = TextAlign.Center)
+                }
+            }
+        } else {
+            items(visible, key = { it.pickupCode }) { booking ->
+                SellerReservationCard(booking = booking, updateStatus = { newStatus -> updateStatus(booking, newStatus) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun SellerReservationCard(booking: Booking, updateStatus: (String) -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(20.dp), elevation = CardDefaults.cardElevation(2.dp)) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ProductArtwork(booking.product, Modifier.size(76.dp), 30)
+                Column(Modifier.padding(start = 12.dp).weight(1f)) {
+                    Text(booking.product.name, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    Text("Qty ${booking.quantity} • Nu. ${booking.product.discountedPrice * booking.quantity}", color = Wine, fontWeight = FontWeight.SemiBold)
+                    Text("📍 ${booking.product.address}, ${booking.product.dzongkhag}", color = Color.Gray, fontSize = 12.sp, maxLines = 2)
+                }
+                BookingStatusChip(booking.status)
+            }
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Pickup code", color = Color.Gray, fontSize = 11.sp)
+                    Text(booking.pickupCode, color = Wine, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("Customer", color = Color.Gray, fontSize = 11.sp)
+                    Text("Verified customer", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                }
+            }
+            if (booking.status == "Reserved") {
+                Spacer(Modifier.height(14.dp))
+                Button(onClick = { updateStatus("Ready for pickup") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                    Icon(Icons.Outlined.Inventory2, null); Spacer(Modifier.width(7.dp)); Text("Mark ready for pickup")
+                }
+                TextButton(onClick = { updateStatus("Cancelled") }, modifier = Modifier.fillMaxWidth()) { Text("Cancel reservation", color = MaterialTheme.colorScheme.error) }
+            } else if (booking.status == "Ready for pickup") {
+                Spacer(Modifier.height(14.dp))
+                Button(onClick = { updateStatus("Collected") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = Sage)) {
+                    Icon(Icons.Outlined.CheckCircle, null); Spacer(Modifier.width(7.dp)); Text("Mark as collected")
+                }
+                TextButton(onClick = { updateStatus("Cancelled") }, modifier = Modifier.fillMaxWidth()) { Text("Cancel reservation", color = MaterialTheme.colorScheme.error) }
+            }
+        }
     }
 }
 
@@ -679,7 +819,19 @@ private fun ProductDetailPreview() { TshongLaTheme { ProductDetailScreen(sampleP
 
 @Preview(showBackground = true, showSystemUi = true)
 @Composable
-private fun ShopPreview() { TshongLaTheme { ShopScreen(sampleProducts, {}, {}, {}) } }
+private fun ShopPreview() { TshongLaTheme { ShopScreen(sampleProducts, emptyList(), {}, {}, {}, {}) } }
+
+@Preview(showBackground = true, showSystemUi = true)
+@Composable
+private fun SellerReservationsPreview() {
+    TshongLaTheme {
+        SellerReservationsScreen(
+            bookings = listOf(Booking(sampleProducts.first(), 2, "TSH-10011", "Ready for pickup")),
+            back = {},
+            updateStatus = { _, _ -> }
+        )
+    }
+}
 
 @Preview(showBackground = true, showSystemUi = true)
 @Composable
