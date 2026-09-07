@@ -46,10 +46,8 @@ service cloud.firestore {
                     && resource.data.sellerId == request.auth.uid;
 
       allow update: if signedIn() && (
-        // The seller may manage their own product.
         resource.data.sellerId == request.auth.uid
         ||
-        // A verified customer may only reduce stock during a booking transaction.
         (
           isVerifiedCustomer()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock'])
@@ -57,10 +55,12 @@ service cloud.firestore {
           && request.resource.data.stock < resource.data.stock
         )
         ||
-        // Review submission may only change aggregate rating fields.
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'rating', 'ratingCount', 'ratingSum', 'updatedAt'
-        ])
+        (
+          isVerifiedCustomer()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'rating', 'ratingCount', 'ratingSum', 'updatedAt'
+          ])
+        )
       );
     }
 
@@ -74,8 +74,6 @@ service cloud.firestore {
                   && (resource.data.customerId == request.auth.uid
                       || resource.data.sellerId == request.auth.uid);
 
-      // Only the seller may change reservation status, and no booking identity
-      // or purchase details can be rewritten.
       allow update: if signedIn()
                     && resource.data.sellerId == request.auth.uid
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
