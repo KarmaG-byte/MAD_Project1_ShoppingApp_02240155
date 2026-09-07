@@ -39,12 +39,12 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
-    // Firebase
+    // Firebase Authentication + Firestore. Product/CID/review images are stored locally
+    // in the free-tier classroom build, so Firebase Storage is intentionally not required.
     implementation(platform("com.google.firebase:firebase-bom:34.4.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
-    implementation("com.google.firebase:firebase-storage")
 
-    // Product image display
+    // Product and review image display
     implementation("io.coil-kt:coil-compose:2.7.0")
 }
