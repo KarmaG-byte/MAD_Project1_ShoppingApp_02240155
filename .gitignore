@@ -8,3 +8,6 @@
 .externalNativeBuild
 .cxx
 app/build
+
+# Firebase app configuration is machine/project-specific and kept local.
+app/google-services.json
