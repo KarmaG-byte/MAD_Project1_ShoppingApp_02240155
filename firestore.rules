@@ -19,7 +19,11 @@ service cloud.firestore {
     match /products/{productId} {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.sellerId == request.auth.uid;
-      allow update, delete: if signedIn() && resource.data.sellerId == request.auth.uid;
+      allow delete: if signedIn() && resource.data.sellerId == request.auth.uid;
+      allow update: if signedIn() && (
+        resource.data.sellerId == request.auth.uid ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'ratingCount', 'ratingSum', 'updatedAt'])
+      );
     }
 
     match /bookings/{bookingId} {
@@ -30,7 +34,9 @@ service cloud.firestore {
 
     match /reviews/{reviewId} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.customerId == request.auth.uid && request.resource.data.verifiedPurchase == true;
+      allow create: if signedIn()
+                    && request.resource.data.customerId == request.auth.uid
+                    && request.resource.data.verifiedPurchase == true;
       allow update, delete: if false;
     }
   }
