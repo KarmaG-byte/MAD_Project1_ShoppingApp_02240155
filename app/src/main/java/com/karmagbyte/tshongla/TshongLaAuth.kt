@@ -61,7 +61,7 @@ object TshongLaAuth {
                     address = address.trim(),
                     cidNumber = cidNumber.trim(),
                     cidImageUri = cidImageUri,
-                    verificationStatus = if (isShopkeeper && phoneVerified && cidNumber.isNotBlank() && cidImageUri.isNotBlank()) "submitted" else if (isShopkeeper) "incomplete" else "not_required"
+                    verificationStatus = if (isShopkeeper && phoneVerified && cidNumber.isNotBlank() && cidImageUri.isNotBlank()) "submitted" else if (isShopkeeper) "incomplete" else if (phoneVerified) "verified" else "incomplete"
                 )
                 users.document(firebaseUser.uid).set(profileToMap(profile))
                     .addOnSuccessListener { onSuccess(profile) }
@@ -73,23 +73,12 @@ object TshongLaAuth {
             .addOnFailureListener { onError(it.localizedMessage ?: "Unable to create account.") }
     }
 
-    fun login(
-        email: String,
-        password: String,
-        expectedRole: String,
-        onSuccess: (TshongLaUser) -> Unit,
-        onError: (String) -> Unit
-    ) {
+    fun login(email: String, password: String, expectedRole: String, onSuccess: (TshongLaUser) -> Unit, onError: (String) -> Unit) {
         auth.signInWithEmailAndPassword(email.trim(), password)
             .addOnSuccessListener { result ->
-                val uid = result.user?.uid ?: run {
-                    onError("Unable to open user session.")
-                    return@addOnSuccessListener
-                }
+                val uid = result.user?.uid ?: run { onError("Unable to open user session."); return@addOnSuccessListener }
                 users.document(uid).get().addOnSuccessListener { doc ->
-                    if (!doc.exists()) {
-                        auth.signOut(); onError("This account does not have a TshongLa profile."); return@addOnSuccessListener
-                    }
+                    if (!doc.exists()) { auth.signOut(); onError("This account does not have a TshongLa profile."); return@addOnSuccessListener }
                     val role = doc.getString("role") ?: ""
                     if (role != expectedRole) {
                         auth.signOut()
@@ -97,42 +86,55 @@ object TshongLaAuth {
                         return@addOnSuccessListener
                     }
                     onSuccess(userFromDocument(uid, doc, email.trim()))
-                }.addOnFailureListener { error ->
-                    auth.signOut(); onError(error.localizedMessage ?: "Unable to load account profile.")
-                }
+                }.addOnFailureListener { error -> auth.signOut(); onError(error.localizedMessage ?: "Unable to load account profile.") }
             }
             .addOnFailureListener { onError(it.localizedMessage ?: "Unable to log in.") }
     }
 
+    fun updateVerification(
+        current: TshongLaUser,
+        phone: String,
+        phoneVerified: Boolean,
+        cidNumber: String,
+        cidImageUri: String,
+        onSuccess: (TshongLaUser) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val updated = current.copy(
+            phone = phone.trim(),
+            phoneVerified = phoneVerified,
+            cidNumber = if (current.role == "shopkeeper") cidNumber.trim() else "",
+            cidImageUri = if (current.role == "shopkeeper") cidImageUri else "",
+            verificationStatus = if (current.role == "shopkeeper") {
+                if (phoneVerified && cidNumber.isNotBlank() && cidImageUri.isNotBlank()) "submitted" else "incomplete"
+            } else if (phoneVerified) "verified" else "incomplete"
+        )
+        users.document(current.uid).update(mapOf(
+            "phone" to updated.phone,
+            "phoneVerified" to updated.phoneVerified,
+            "cidNumber" to updated.cidNumber,
+            "cidImageUri" to updated.cidImageUri,
+            "verificationStatus" to updated.verificationStatus,
+            "updatedAt" to FieldValue.serverTimestamp()
+        )).addOnSuccessListener { onSuccess(updated) }
+            .addOnFailureListener { onError(it.localizedMessage ?: "Unable to update verification") }
+    }
+
     private fun profileToMap(profile: TshongLaUser): Map<String, Any> = mapOf(
-        "uid" to profile.uid,
-        "name" to profile.name,
-        "email" to profile.email,
-        "role" to profile.role,
-        "phone" to profile.phone,
-        "phoneVerified" to profile.phoneVerified,
-        "shopName" to profile.shopName,
-        "dzongkhag" to profile.dzongkhag,
-        "address" to profile.address,
-        "cidNumber" to profile.cidNumber,
-        "cidImageUri" to profile.cidImageUri,
+        "uid" to profile.uid, "name" to profile.name, "email" to profile.email, "role" to profile.role,
+        "phone" to profile.phone, "phoneVerified" to profile.phoneVerified,
+        "shopName" to profile.shopName, "dzongkhag" to profile.dzongkhag, "address" to profile.address,
+        "cidNumber" to profile.cidNumber, "cidImageUri" to profile.cidImageUri,
         "verificationStatus" to profile.verificationStatus,
-        "createdAt" to FieldValue.serverTimestamp(),
-        "updatedAt" to FieldValue.serverTimestamp()
+        "createdAt" to FieldValue.serverTimestamp(), "updatedAt" to FieldValue.serverTimestamp()
     )
 
     private fun userFromDocument(uid: String, doc: com.google.firebase.firestore.DocumentSnapshot, fallbackEmail: String) = TshongLaUser(
-        uid = uid,
-        name = doc.getString("name") ?: "",
-        email = doc.getString("email") ?: fallbackEmail,
-        role = doc.getString("role") ?: "",
-        phone = doc.getString("phone") ?: "",
-        phoneVerified = doc.getBoolean("phoneVerified") ?: false,
-        shopName = doc.getString("shopName") ?: "",
-        dzongkhag = doc.getString("dzongkhag") ?: "",
-        address = doc.getString("address") ?: "",
-        cidNumber = doc.getString("cidNumber") ?: "",
-        cidImageUri = doc.getString("cidImageUri") ?: "",
+        uid = uid, name = doc.getString("name") ?: "", email = doc.getString("email") ?: fallbackEmail,
+        role = doc.getString("role") ?: "", phone = doc.getString("phone") ?: "",
+        phoneVerified = doc.getBoolean("phoneVerified") ?: false, shopName = doc.getString("shopName") ?: "",
+        dzongkhag = doc.getString("dzongkhag") ?: "", address = doc.getString("address") ?: "",
+        cidNumber = doc.getString("cidNumber") ?: "", cidImageUri = doc.getString("cidImageUri") ?: "",
         verificationStatus = doc.getString("verificationStatus") ?: "incomplete"
     )
 
