@@ -5,49 +5,38 @@ import com.google.firebase.FirebaseApp
 import java.io.File
 import java.io.FileOutputStream
 
-/**
- * Local image helper used for the free-tier classroom/demo build.
- *
- * Product images are copied into the app's private internal storage so they
- * continue to work after the gallery picker closes and after the app restarts.
- * The resulting local file URI is stored with the Firestore product document.
- *
- * Limitation: that URI only exists on this device, so another device will not
- * automatically be able to display the same image. The rest of the product
- * data still synchronizes through Firestore normally.
- */
+/** Local image helper for the free-tier classroom/demo build. */
 object TshongLaStorage {
+    fun uploadProductImage(productId: Int, imageUri: Uri, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
+        saveLocalImage("product_images", "product_${productId}.jpg", imageUri, onSuccess, onError)
+    }
 
-    fun uploadProductImage(
-        productId: Int,
-        imageUri: Uri,
-        onSuccess: (String) -> Unit,
-        onError: (String) -> Unit
-    ) {
+    fun saveCidImage(imageUri: Uri, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
+        saveLocalImage("identity_images", "cid_${System.currentTimeMillis()}.jpg", imageUri, onSuccess, onError)
+    }
+
+    fun saveReviewImage(customerId: String, productId: Int, imageUri: Uri, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
+        saveLocalImage("review_images", "review_${customerId}_${productId}.jpg", imageUri, onSuccess, onError)
+    }
+
+    private fun saveLocalImage(folder: String, fileName: String, imageUri: Uri, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
         try {
             val context = FirebaseApp.getInstance().applicationContext
-            val imageDir = File(context.filesDir, "product_images")
+            val imageDir = File(context.filesDir, folder)
             if (!imageDir.exists() && !imageDir.mkdirs()) {
                 onError("Unable to create local image folder")
                 return
             }
-
-            val destination = File(imageDir, "product_${productId}.jpg")
+            val destination = File(imageDir, fileName)
             val input = context.contentResolver.openInputStream(imageUri)
             if (input == null) {
                 onError("Unable to open the selected image")
                 return
             }
-
-            input.use { source ->
-                FileOutputStream(destination, false).use { output ->
-                    source.copyTo(output)
-                }
-            }
-
+            input.use { source -> FileOutputStream(destination, false).use { output -> source.copyTo(output) } }
             onSuccess(Uri.fromFile(destination).toString())
         } catch (error: Exception) {
-            onError("Unable to save product image locally: ${error.localizedMessage ?: "unknown error"}")
+            onError("Unable to save image locally: ${error.localizedMessage ?: "unknown error"}")
         }
     }
 }
