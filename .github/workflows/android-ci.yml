@@ -7,6 +7,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,6 +17,34 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Apply final TshongLa logo inside app
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/karmagbyte/tshongla/MainActivity.kt')
+          s = p.read_text()
+          old = '        Surface(shape = CircleShape, color = Wine, modifier = Modifier.size(76.dp)) { Box(contentAlignment = Alignment.Center) { Text("T", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold) } }'
+          new = '''        Surface(shape = RoundedCornerShape(24.dp), color = Color.Transparent, modifier = Modifier.size(112.dp)) {
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(R.drawable.ic_launcher),
+                contentDescription = "TshongLa logo",
+                modifier = Modifier.fillMaxSize()
+            )
+        }'''
+          if old in s:
+              p.write_text(s.replace(old, new, 1))
+          PY
+
+          if ! git diff --quiet -- app/src/main/java/com/karmagbyte/tshongla/MainActivity.kt; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add app/src/main/java/com/karmagbyte/tshongla/MainActivity.kt
+            git commit -m "Use final TshongLa logo inside app"
+            git push
+          fi
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
