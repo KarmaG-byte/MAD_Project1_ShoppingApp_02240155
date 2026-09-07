@@ -1,26 +1,67 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="48dp"
-    android:height="48dp"
-    android:viewportWidth="48"
-    android:viewportHeight="48">
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
 
-    <!-- White rounded tile -->
+    <!-- Rounded cream background -->
     <path
-        android:fillColor="#F7F7F7"
-        android:pathData="M8,2H40Q46,2 46,8V40Q46,46 40,46H8Q2,46 2,40V8Q2,2 8,2Z" />
+        android:fillColor="#FFF9F0"
+        android:pathData="M18,2H90Q106,2 106,18V90Q106,106 90,106H18Q2,106 2,90V18Q2,2 18,2Z" />
 
-    <!-- TshongLa shopping bag -->
-    <path
-        android:fillColor="#9E3F3F"
-        android:pathData="M10,15H38V41H10Z" />
+    <!-- Subtle Bhutanese-inspired corner motifs -->
+    <path android:fillColor="#F4E4C4" android:fillAlpha="0.65"
+        android:pathData="M7,20C10,10 17,6 26,5C22,10 23,15 28,18C19,17 15,20 13,27C12,23 10,21 7,20Z" />
+    <path android:fillColor="#F4E4C4" android:fillAlpha="0.65"
+        android:pathData="M101,20C98,10 91,6 82,5C86,10 85,15 80,18C89,17 93,20 95,27C96,23 98,21 101,20Z" />
 
-    <!-- Golden handle -->
+    <!-- Bag body -->
     <path
-        android:fillColor="#D9B24C"
-        android:pathData="M16,17C16,10 19.6,6 24,6C28.4,6 32,10 32,17H28C28,12.5 26.3,10 24,10C21.7,10 20,12.5 20,17Z" />
+        android:fillColor="#8E3A8F"
+        android:strokeColor="#2F1852"
+        android:strokeWidth="2"
+        android:pathData="M27,34L81,34L88,78L20,78Z" />
 
-    <!-- White product lines -->
+    <!-- Side panels -->
+    <path android:fillColor="#F15A76" android:strokeColor="#2F1852" android:strokeWidth="1.5"
+        android:pathData="M27,34L20,78L29,72L34,34Z" />
+    <path android:fillColor="#F15A76" android:strokeColor="#2F1852" android:strokeWidth="1.5"
+        android:pathData="M81,34L88,78L79,72L74,34Z" />
+    <path android:fillColor="#FDB64A"
+        android:pathData="M20,78L29,72L31,78Z M88,78L79,72L77,78Z" />
+
+    <!-- Handle -->
     <path
-        android:fillColor="#F7F7F7"
-        android:pathData="M14,24H34V28H14ZM14,32H30V36H14Z" />
+        android:fillColor="#FDB34B"
+        android:strokeColor="#FFF9F0"
+        android:strokeWidth="2.5"
+        android:pathData="M38,39V29C38,19 44,13 54,13C64,13 70,19 70,29V39C70,42 68,44 65,44C62,44 60,42 60,39V29C60,24 58,21 54,21C50,21 48,24 48,29V39C48,42 46,44 43,44C40,44 38,42 38,39Z" />
+
+    <!-- Top geometric band -->
+    <path android:fillColor="#D93C78" android:pathData="M31,37H77V45H31Z" />
+    <path android:fillColor="#11A8A0" android:pathData="M34,41L38,37L42,41L38,45Z M46,41L50,37L54,41L50,45Z M58,41L62,37L66,41L62,45Z M70,41L74,37L78,41L74,45Z" />
+    <path android:fillColor="#F9C74F" android:pathData="M31,46H77V48H31Z" />
+
+    <!-- Central mandala outer -->
+    <path android:fillColor="#F2A846"
+        android:pathData="M54,49L58,53L64,52L66,58L72,61L69,67L70,73L64,75L60,81L54,78L48,81L44,75L38,73L39,67L36,61L42,58L44,52L50,53Z" />
+    <path android:fillColor="#972F78"
+        android:pathData="M54,52L58,56L63,55L64,60L69,62L66,67L67,71L62,72L59,77L54,75L49,77L46,72L41,71L42,67L39,62L44,60L45,55L50,56Z" />
+
+    <!-- Dharma wheel / mandala center -->
+    <path android:fillColor="#16365C" android:pathData="M54,56A12,12 0,1 0,54 80A12,12 0,1 0,54 56Z" />
+    <path android:fillColor="#1CA7B7" android:pathData="M54,59A9,9 0,1 0,54 77A9,9 0,1 0,54 59Z" />
+    <path android:fillColor="#2F1852" android:pathData="M52,59H56V77H52Z M45,66H63V70H45Z M47.5,61.5L60.5,74.5L57.5,77.5L44.5,64.5Z M60.5,61.5L63.5,64.5L50.5,77.5L47.5,74.5Z" />
+    <path android:fillColor="#FDB64A" android:pathData="M54,64A4,4 0,1 0,54 72A4,4 0,1 0,54 64Z" />
+    <path android:fillColor="#2F1852" android:pathData="M54,66A2,2 0,1 0,54 70A2,2 0,1 0,54 66Z" />
+
+    <!-- Bottom geometric band -->
+    <path android:fillColor="#D93C78" android:pathData="M28,72H80V79H28Z" />
+    <path android:fillColor="#11A8A0" android:pathData="M31,75L35,72L39,75L35,78Z M42,75L46,72L50,75L46,78Z M53,75L57,72L61,75L57,78Z M64,75L68,72L72,75L68,78Z M75,75L79,72L83,75L79,78Z" />
+
+    <!-- Wordmark hint beneath bag -->
+    <path android:fillColor="#4B176B"
+        android:pathData="M22,86H86V89H22Z" />
+    <path android:fillColor="#FDB64A"
+        android:pathData="M50,93L54,90L58,93L54,96Z" />
 </vector>
