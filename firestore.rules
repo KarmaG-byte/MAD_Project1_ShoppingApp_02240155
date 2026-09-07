@@ -11,6 +11,26 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
+    function currentUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isVerifiedCustomer() {
+      return signedIn()
+        && currentUser().data.role == 'customer'
+        && currentUser().data.phoneVerified == true;
+    }
+
+    function isVerifiedShopkeeper() {
+      return signedIn()
+        && currentUser().data.role == 'shopkeeper'
+        && currentUser().data.phoneVerified == true
+        && currentUser().data.cidNumber is string
+        && currentUser().data.cidNumber.size() > 0
+        && currentUser().data.cidImageUri is string
+        && currentUser().data.cidImageUri.size() > 0;
+    }
+
     match /users/{userId} {
       allow create: if isOwner(userId);
       allow read, update: if isOwner(userId);
@@ -18,25 +38,71 @@ service cloud.firestore {
 
     match /products/{productId} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.sellerId == request.auth.uid;
-      allow delete: if signedIn() && resource.data.sellerId == request.auth.uid;
+
+      allow create: if isVerifiedShopkeeper()
+                    && request.resource.data.sellerId == request.auth.uid;
+
+      allow delete: if signedIn()
+                    && resource.data.sellerId == request.auth.uid;
+
       allow update: if signedIn() && (
-        resource.data.sellerId == request.auth.uid ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'ratingCount', 'ratingSum', 'updatedAt'])
+        // The seller may manage their own product.
+        resource.data.sellerId == request.auth.uid
+        ||
+        // A verified customer may only reduce stock during a booking transaction.
+        (
+          isVerifiedCustomer()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock'])
+          && request.resource.data.stock >= 0
+          && request.resource.data.stock < resource.data.stock
+        )
+        ||
+        // Review submission may only change aggregate rating fields.
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'rating', 'ratingCount', 'ratingSum', 'updatedAt'
+        ])
       );
     }
 
     match /bookings/{bookingId} {
-      allow create: if signedIn() && request.resource.data.customerId == request.auth.uid;
-      allow read: if signedIn() && (resource.data.customerId == request.auth.uid || resource.data.sellerId == request.auth.uid);
-      allow update: if signedIn() && (resource.data.customerId == request.auth.uid || resource.data.sellerId == request.auth.uid);
+      allow create: if isVerifiedCustomer()
+                    && request.resource.data.customerId == request.auth.uid
+                    && request.resource.data.status == 'Reserved'
+                    && request.resource.data.quantity > 0;
+
+      allow read: if signedIn()
+                  && (resource.data.customerId == request.auth.uid
+                      || resource.data.sellerId == request.auth.uid);
+
+      // Only the seller may change reservation status, and no booking identity
+      // or purchase details can be rewritten.
+      allow update: if signedIn()
+                    && resource.data.sellerId == request.auth.uid
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                      'status', 'updatedAt'
+                    ])
+                    && request.resource.data.status in [
+                      'Reserved', 'Ready for pickup', 'Collected', 'Cancelled'
+                    ];
+
+      allow delete: if false;
     }
 
     match /reviews/{reviewId} {
       allow read: if signedIn();
-      allow create: if signedIn()
+
+      allow create: if isVerifiedCustomer()
                     && request.resource.data.customerId == request.auth.uid
-                    && request.resource.data.verifiedPurchase == true;
+                    && request.resource.data.verifiedPurchase == true
+                    && request.resource.data.productRating >= 1
+                    && request.resource.data.productRating <= 5
+                    && request.resource.data.businessRating >= 1
+                    && request.resource.data.businessRating <= 5
+                    && exists(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId))
+                    && get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.customerId == request.auth.uid
+                    && get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.productId == request.resource.data.productId
+                    && get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.status == 'Collected';
+
       allow update, delete: if false;
     }
   }
