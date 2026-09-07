@@ -1,0 +1,44 @@
+name: Apply TshongLa branding
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/brand-logo-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-branding:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use launcher logo inside the app
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/karmagbyte/tshongla/MainActivity.kt')
+          text = path.read_text()
+          old = '''        Surface(shape = CircleShape, color = Wine, modifier = Modifier.size(76.dp)) { Box(contentAlignment = Alignment.Center) { Text("T", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold) } }'''
+          new = '''        Surface(shape = RoundedCornerShape(22.dp), color = Color.White, modifier = Modifier.size(92.dp)) {
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(R.drawable.ic_launcher),
+                contentDescription = "TshongLa logo",
+                modifier = Modifier.fillMaxSize().padding(6.dp)
+            )
+        }'''
+          if old not in text:
+              raise SystemExit('Expected TshongLa placeholder logo was not found; no changes made.')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Commit branding update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/karmagbyte/tshongla/MainActivity.kt
+          git commit -m "Use TshongLa launcher logo in app branding"
+          git push
