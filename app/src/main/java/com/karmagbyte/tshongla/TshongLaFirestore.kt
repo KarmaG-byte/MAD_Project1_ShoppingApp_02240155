@@ -5,10 +5,6 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 
-/**
- * Central Firestore data layer for TshongLa.
- * UI code observes this repository instead of keeping permanent data only in memory.
- */
 object TshongLaFirestore {
     private val db: FirebaseFirestore by lazy { FirebaseFirestore.getInstance() }
     private val products = db.collection("products")
@@ -23,67 +19,67 @@ object TshongLaFirestore {
                 onError(error.localizedMessage ?: "Unable to load products")
                 return@addSnapshotListener
             }
-            val result = snapshot?.documents.orEmpty().mapNotNull(::productFromDocument)
-                .sortedBy { it.id }
-            onChange(result)
+            onChange(snapshot?.documents.orEmpty().mapNotNull(::productFromDocument).sortedBy { it.id })
         }
     }
 
-    fun listenToBookings(
+    fun listenToBookingsForCustomer(
+        customerId: String,
         onChange: (List<Booking>) -> Unit,
         onError: (String) -> Unit = {}
     ): ListenerRegistration {
-        return bookings.addSnapshotListener { snapshot, error ->
+        return bookings.whereEqualTo("customerId", customerId).addSnapshotListener { snapshot, error ->
             if (error != null) {
                 onError(error.localizedMessage ?: "Unable to load bookings")
                 return@addSnapshotListener
             }
-            val result = snapshot?.documents.orEmpty().mapNotNull(::bookingFromDocument)
-            onChange(result)
+            onChange(snapshot?.documents.orEmpty().mapNotNull(::bookingFromDocument))
+        }
+    }
+
+    fun listenToBookingsForSeller(
+        sellerId: String,
+        onChange: (List<Booking>) -> Unit,
+        onError: (String) -> Unit = {}
+    ): ListenerRegistration {
+        return bookings.whereEqualTo("sellerId", sellerId).addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                onError(error.localizedMessage ?: "Unable to load reservations")
+                return@addSnapshotListener
+            }
+            onChange(snapshot?.documents.orEmpty().mapNotNull(::bookingFromDocument))
         }
     }
 
     fun seedProductsIfEmpty(seed: List<Product>) {
-        products.limit(1).get()
-            .addOnSuccessListener { snapshot ->
-                if (snapshot.isEmpty) {
-                    val batch = db.batch()
-                    seed.forEach { product ->
-                        batch.set(products.document(product.id.toString()), productToMap(product))
-                    }
-                    batch.commit()
+        products.limit(1).get().addOnSuccessListener { snapshot ->
+            if (snapshot.isEmpty) {
+                val batch = db.batch()
+                seed.forEach { product ->
+                    batch.set(products.document(product.id.toString()), productToMap(product))
                 }
+                batch.commit()
             }
+        }
     }
 
-    fun saveProduct(
-        product: Product,
-        onSuccess: () -> Unit = {},
-        onError: (String) -> Unit = {}
-    ) {
+    fun saveProduct(product: Product, onSuccess: () -> Unit = {}, onError: (String) -> Unit = {}) {
         products.document(product.id.toString())
             .set(productToMap(product))
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener { onError(it.localizedMessage ?: "Unable to save product") }
     }
 
-    fun deleteProduct(
-        product: Product,
-        onSuccess: () -> Unit = {},
-        onError: (String) -> Unit = {}
-    ) {
+    fun deleteProduct(product: Product, onSuccess: () -> Unit = {}, onError: (String) -> Unit = {}) {
         products.document(product.id.toString())
             .delete()
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener { onError(it.localizedMessage ?: "Unable to delete product") }
     }
 
-    /**
-     * Creates a booking and decreases stock in one Firestore transaction.
-     * This prevents two customers from reserving stock that is no longer available.
-     */
     fun createBooking(
         product: Product,
+        customerId: String,
         quantity: Int,
         onSuccess: (Booking) -> Unit,
         onError: (String) -> Unit = {}
@@ -92,11 +88,22 @@ object TshongLaFirestore {
             onError("Quantity must be at least 1")
             return
         }
+        if (customerId.isBlank()) {
+            onError("Please log in before making a reservation")
+            return
+        }
 
         val pickupCode = "TSH-${System.currentTimeMillis().toString().takeLast(8)}"
         val bookingRef = bookings.document(pickupCode)
         val productRef = products.document(product.id.toString())
-        val booking = Booking(product, quantity, pickupCode, "Reserved")
+        val booking = Booking(
+            product = product,
+            quantity = quantity,
+            pickupCode = pickupCode,
+            status = "Reserved",
+            customerId = customerId,
+            sellerId = product.sellerId
+        )
 
         db.runTransaction { transaction ->
             val productSnapshot = transaction.get(productRef)
@@ -104,16 +111,12 @@ object TshongLaFirestore {
             if (currentStock < quantity) {
                 throw IllegalStateException("Only $currentStock item(s) are currently available")
             }
-
             transaction.update(productRef, "stock", currentStock - quantity)
             transaction.set(bookingRef, bookingToMap(booking))
         }.addOnSuccessListener { onSuccess(booking) }
             .addOnFailureListener { onError(it.localizedMessage ?: "Unable to reserve item") }
     }
 
-    /**
-     * Updates reservation status. Cancelling an active booking also restores its stock.
-     */
     fun updateBookingStatus(
         booking: Booking,
         newStatus: String,
@@ -137,10 +140,7 @@ object TshongLaFirestore {
 
             transaction.update(
                 bookingRef,
-                mapOf(
-                    "status" to newStatus,
-                    "updatedAt" to FieldValue.serverTimestamp()
-                )
+                mapOf("status" to newStatus, "updatedAt" to FieldValue.serverTimestamp())
             )
         }.addOnSuccessListener { onSuccess() }
             .addOnFailureListener { onError(it.localizedMessage ?: "Unable to update reservation") }
@@ -153,17 +153,21 @@ object TshongLaFirestore {
         "price" to product.price,
         "rating" to product.rating,
         "seller" to product.seller,
+        "sellerId" to product.sellerId,
         "dzongkhag" to product.dzongkhag,
         "address" to product.address,
         "stock" to product.stock,
         "discountPercent" to product.discountPercent,
         "symbol" to product.symbol,
         "description" to product.description,
+        "imageUrl" to product.imageUrl,
         "updatedAt" to FieldValue.serverTimestamp()
     )
 
     private fun bookingToMap(booking: Booking): Map<String, Any> = mapOf(
         "pickupCode" to booking.pickupCode,
+        "customerId" to booking.customerId,
+        "sellerId" to booking.sellerId,
         "productId" to booking.product.id,
         "productName" to booking.product.name,
         "category" to booking.product.category,
@@ -174,6 +178,7 @@ object TshongLaFirestore {
         "address" to booking.product.address,
         "symbol" to booking.product.symbol,
         "description" to booking.product.description,
+        "imageUrl" to booking.product.imageUrl,
         "quantity" to booking.quantity,
         "status" to booking.status,
         "totalPrice" to booking.product.discountedPrice * booking.quantity,
@@ -191,19 +196,22 @@ object TshongLaFirestore {
             price = document.getLong("price")?.toInt() ?: 0,
             rating = document.getDouble("rating") ?: 0.0,
             seller = document.getString("seller") ?: "Local seller",
+            sellerId = document.getString("sellerId") ?: "",
             dzongkhag = document.getString("dzongkhag") ?: "Thimphu",
             address = document.getString("address") ?: "",
             stock = document.getLong("stock")?.toInt() ?: 0,
             discountPercent = document.getLong("discountPercent")?.toInt() ?: 0,
             symbol = document.getString("symbol") ?: symbolForCategory(category),
             colors = colorsForCategory(category),
-            description = document.getString("description") ?: ""
+            description = document.getString("description") ?: "",
+            imageUrl = document.getString("imageUrl") ?: ""
         )
     }
 
     private fun bookingFromDocument(document: com.google.firebase.firestore.DocumentSnapshot): Booking? {
         val productId = document.getLong("productId")?.toInt() ?: return null
         val category = document.getString("category") ?: "Crafts"
+        val sellerId = document.getString("sellerId") ?: ""
         val product = Product(
             id = productId,
             name = document.getString("productName") ?: "Reserved product",
@@ -211,19 +219,23 @@ object TshongLaFirestore {
             price = document.getLong("unitPrice")?.toInt() ?: 0,
             rating = 0.0,
             seller = document.getString("seller") ?: "Local seller",
+            sellerId = sellerId,
             dzongkhag = document.getString("dzongkhag") ?: "Thimphu",
             address = document.getString("address") ?: "",
             stock = 0,
             discountPercent = document.getLong("discountPercent")?.toInt() ?: 0,
             symbol = document.getString("symbol") ?: symbolForCategory(category),
             colors = colorsForCategory(category),
-            description = document.getString("description") ?: ""
+            description = document.getString("description") ?: "",
+            imageUrl = document.getString("imageUrl") ?: ""
         )
         return Booking(
             product = product,
             quantity = document.getLong("quantity")?.toInt() ?: 1,
             pickupCode = document.getString("pickupCode") ?: document.id,
-            status = document.getString("status") ?: "Reserved"
+            status = document.getString("status") ?: "Reserved",
+            customerId = document.getString("customerId") ?: "",
+            sellerId = sellerId
         )
     }
 
