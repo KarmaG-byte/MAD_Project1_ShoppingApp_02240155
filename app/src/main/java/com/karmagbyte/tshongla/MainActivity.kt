@@ -275,7 +275,7 @@ private fun saveProductWithOptionalImage(product: Product, imageUri: Uri?, succe
 private fun RoleSelectionScreen(customer: () -> Unit, shopkeeper: () -> Unit) {
     Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFFFFF3E4), Cream, Color.White))).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.height(42.dp))
-        Surface(shape = CircleShape, color = Wine, modifier = Modifier.size(76.dp)) { Box(contentAlignment = Alignment.Center) { Text("T", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold) } }
+        androidx.compose.foundation.Image(painter = androidx.compose.ui.res.painterResource(R.drawable.ic_launcher), contentDescription = "TshongLa logo", modifier = Modifier.size(112.dp))
         Spacer(Modifier.height(18.dp)); Text("TshongLa", fontSize = 34.sp, fontWeight = FontWeight.ExtraBold); Text("Handmade Marketplace", color = Wine, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(34.dp)); Text("How would you like to continue?", fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(24.dp)); RoleCard("I'm a Customer", "Browse handmade products, reserve, collect and review.", Icons.Outlined.ShoppingBag, customer)
