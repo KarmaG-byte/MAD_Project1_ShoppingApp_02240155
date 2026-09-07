@@ -12,17 +12,30 @@ object TshongLaStorage {
         onSuccess: (String) -> Unit,
         onError: (String) -> Unit
     ) {
-        val ref = storage.reference.child("products/$productId/main.jpg")
+        // Use a unique filename so an old/cached object reference cannot interfere
+        // with a newly selected image. The download URL is requested from the
+        // exact StorageReference returned by the completed upload task.
+        val fileName = "product_${productId}_${System.currentTimeMillis()}.jpg"
+        val ref = storage.reference.child("products/$productId/$fileName")
+
         ref.putFile(imageUri)
-            .continueWithTask { task ->
-                if (!task.isSuccessful) {
-                    throw task.exception ?: IllegalStateException("Image upload failed")
-                }
-                ref.downloadUrl
+            .addOnSuccessListener { snapshot ->
+                snapshot.storage.downloadUrl
+                    .addOnSuccessListener { downloadUri ->
+                        onSuccess(downloadUri.toString())
+                    }
+                    .addOnFailureListener { error ->
+                        onError(
+                            "Image uploaded, but its download link could not be created: " +
+                                (error.localizedMessage ?: "unknown Storage error")
+                        )
+                    }
             }
-            .addOnSuccessListener { uri -> onSuccess(uri.toString()) }
             .addOnFailureListener { error ->
-                onError(error.localizedMessage ?: "Unable to upload product image")
+                onError(
+                    "Image upload failed: " +
+                        (error.localizedMessage ?: "check Firebase Storage setup and rules")
+                )
             }
     }
 }
