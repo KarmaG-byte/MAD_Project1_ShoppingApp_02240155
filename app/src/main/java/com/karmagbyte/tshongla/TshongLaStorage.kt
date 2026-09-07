@@ -1,10 +1,22 @@
 package com.karmagbyte.tshongla
 
 import android.net.Uri
-import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.FirebaseApp
+import java.io.File
+import java.io.FileOutputStream
 
+/**
+ * Local image helper used for the free-tier classroom/demo build.
+ *
+ * Product images are copied into the app's private internal storage so they
+ * continue to work after the gallery picker closes and after the app restarts.
+ * The resulting local file URI is stored with the Firestore product document.
+ *
+ * Limitation: that URI only exists on this device, so another device will not
+ * automatically be able to display the same image. The rest of the product
+ * data still synchronizes through Firestore normally.
+ */
 object TshongLaStorage {
-    private val storage by lazy { FirebaseStorage.getInstance() }
 
     fun uploadProductImage(
         productId: Int,
@@ -12,30 +24,30 @@ object TshongLaStorage {
         onSuccess: (String) -> Unit,
         onError: (String) -> Unit
     ) {
-        // Use a unique filename so an old/cached object reference cannot interfere
-        // with a newly selected image. The download URL is requested from the
-        // exact StorageReference returned by the completed upload task.
-        val fileName = "product_${productId}_${System.currentTimeMillis()}.jpg"
-        val ref = storage.reference.child("products/$productId/$fileName")
+        try {
+            val context = FirebaseApp.getInstance().applicationContext
+            val imageDir = File(context.filesDir, "product_images")
+            if (!imageDir.exists() && !imageDir.mkdirs()) {
+                onError("Unable to create local image folder")
+                return
+            }
 
-        ref.putFile(imageUri)
-            .addOnSuccessListener { snapshot ->
-                snapshot.storage.downloadUrl
-                    .addOnSuccessListener { downloadUri ->
-                        onSuccess(downloadUri.toString())
-                    }
-                    .addOnFailureListener { error ->
-                        onError(
-                            "Image uploaded, but its download link could not be created: " +
-                                (error.localizedMessage ?: "unknown Storage error")
-                        )
-                    }
+            val destination = File(imageDir, "product_${productId}.jpg")
+            val input = context.contentResolver.openInputStream(imageUri)
+            if (input == null) {
+                onError("Unable to open the selected image")
+                return
             }
-            .addOnFailureListener { error ->
-                onError(
-                    "Image upload failed: " +
-                        (error.localizedMessage ?: "check Firebase Storage setup and rules")
-                )
+
+            input.use { source ->
+                FileOutputStream(destination, false).use { output ->
+                    source.copyTo(output)
+                }
             }
+
+            onSuccess(Uri.fromFile(destination).toString())
+        } catch (error: Exception) {
+            onError("Unable to save product image locally: ${error.localizedMessage ?: "unknown error"}")
+        }
     }
 }
