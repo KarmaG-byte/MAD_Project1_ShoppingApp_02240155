@@ -40,3 +40,5 @@ jobs:
           git add app/src/main/java/com/karmagbyte/tshongla/MainActivity.kt
           git commit -m "Use final TshongLa logo inside app"
           git push
+
+# One-time workflow for final TshongLa branding.
