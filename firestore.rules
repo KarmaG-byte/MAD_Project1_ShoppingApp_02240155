@@ -90,6 +90,7 @@ service cloud.firestore {
       allow read: if signedIn();
 
       allow create: if isVerifiedCustomer()
+                    && reviewId == request.resource.data.bookingId
                     && request.resource.data.customerId == request.auth.uid
                     && request.resource.data.verifiedPurchase == true
                     && request.resource.data.productRating >= 1
@@ -99,6 +100,7 @@ service cloud.firestore {
                     && exists(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId))
                     && get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.customerId == request.auth.uid
                     && get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.productId == request.resource.data.productId
+                    && get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.sellerId == request.resource.data.sellerId
                     && get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.status == 'Collected';
 
       allow update, delete: if false;
