@@ -12,7 +12,8 @@ data class Review(
     val productRating: Int,
     val businessRating: Int,
     val comment: String,
-    val imageUri: String = ""
+    val imageUri: String = "",
+    val bookingId: String = ""
 )
 
 object TshongLaReviews {
@@ -36,7 +37,8 @@ object TshongLaReviews {
                     productRating = doc.getLong("productRating")?.toInt() ?: 0,
                     businessRating = doc.getLong("businessRating")?.toInt() ?: 0,
                     comment = doc.getString("comment") ?: "",
-                    imageUri = doc.getString("imageUri") ?: ""
+                    imageUri = doc.getString("imageUri") ?: "",
+                    bookingId = doc.getString("bookingId") ?: ""
                 )
             })
         }
@@ -56,46 +58,73 @@ object TshongLaReviews {
             onError("Only collected purchases can be reviewed.")
             return
         }
-        if (productRating !in 1..5 || businessRating !in 1..5) {
-            onError("Choose a 1–5 star rating.")
+        if (booking.customerId.isBlank()) {
+            onError("This booking is missing customer information.")
             return
         }
-        val reviewId = "${booking.customerId}_${booking.product.id}"
+        if (booking.pickupCode.isBlank()) {
+            onError("This booking is missing its pickup code.")
+            return
+        }
+        if (productRating !in 1..5 || businessRating !in 1..5) {
+            onError("Choose a 1–5 star rating for both the product and business.")
+            return
+        }
+
+        // A review belongs to one completed purchase, not simply to a customer/product pair.
+        // This allows a customer who purchases the same product again later to review that
+        // separate collected purchase, while preventing duplicate reviews for one booking.
+        val reviewId = booking.pickupCode
         val reviewRef = reviews.document(reviewId)
         val productRef = products.document(booking.product.id.toString())
 
         db.runTransaction { tx ->
             val existing = tx.get(reviewRef)
-            if (existing.exists()) throw IllegalStateException("You already reviewed this product.")
-            val productDoc = tx.get(productRef)
-            val oldCount = productDoc.getLong("ratingCount")?.toInt() ?: 0
-            val oldSum = productDoc.getDouble("ratingSum") ?: (productDoc.getDouble("rating") ?: 0.0) * oldCount
-            val newCount = oldCount + 1
-            val newSum = oldSum + productRating
-            val newAverage = newSum / newCount
+            if (existing.exists()) {
+                throw IllegalStateException("You already reviewed this collected purchase.")
+            }
 
-            tx.set(reviewRef, mapOf(
-                "productId" to booking.product.id,
-                "customerId" to booking.customerId,
-                "customerName" to customerName,
-                "productRating" to productRating,
-                "businessRating" to businessRating,
-                "comment" to comment.trim(),
-                "imageUri" to imageUri,
-                "verifiedPurchase" to true,
-                "bookingId" to booking.pickupCode,
-                "sellerId" to booking.sellerId,
-                "createdAt" to FieldValue.serverTimestamp()
-            ))
-            if (productDoc.exists()) {
-                tx.update(productRef, mapOf(
+            val productDoc = tx.get(productRef)
+            if (!productDoc.exists()) {
+                throw IllegalStateException("The product is no longer available for rating.")
+            }
+
+            val oldCount = productDoc.getLong("ratingCount")?.toInt() ?: 0
+            val storedRating = productDoc.getDouble("rating") ?: 0.0
+            val oldSum = productDoc.getDouble("ratingSum") ?: (storedRating * oldCount)
+            val newCount = oldCount + 1
+            val newSum = oldSum + productRating.toDouble()
+            val newAverage = newSum / newCount.toDouble()
+
+            tx.set(
+                reviewRef,
+                mapOf(
+                    "productId" to booking.product.id,
+                    "customerId" to booking.customerId,
+                    "customerName" to customerName,
+                    "productRating" to productRating,
+                    "businessRating" to businessRating,
+                    "comment" to comment.trim(),
+                    "imageUri" to imageUri,
+                    "verifiedPurchase" to true,
+                    "bookingId" to booking.pickupCode,
+                    "sellerId" to booking.sellerId,
+                    "createdAt" to FieldValue.serverTimestamp()
+                )
+            )
+
+            tx.update(
+                productRef,
+                mapOf(
                     "rating" to newAverage,
                     "ratingCount" to newCount,
                     "ratingSum" to newSum,
                     "updatedAt" to FieldValue.serverTimestamp()
-                ))
-            }
+                )
+            )
         }.addOnSuccessListener { onSuccess() }
-            .addOnFailureListener { onError(it.localizedMessage ?: "Unable to submit review") }
+            .addOnFailureListener { error ->
+                onError(error.localizedMessage ?: "Unable to submit review. Please try again.")
+            }
     }
 }
